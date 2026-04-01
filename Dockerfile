@@ -17,10 +17,11 @@ From golang:1.25-alpine
 # 設定工作目錄為 /app，設定一次，後續指令都在 /app 下執行
 WORKDIR /app
 
-# 通常會匹配到這兩個關鍵檔案： 將檔案從「本機（建構上下文）」複製到「容器映像」中
+## 第一次 COPY → 只處理依賴，快取效果好。
+# 第一次 只把 go.mod 和 go.sum 複製進容器。
 # go.mod（依賴清單）
 # go.sum（依賴雜湊驗證）
-COPY go.* ./
+COPY go.* ./ 
 
 # 如果只修改程式碼（.go 檔案）
 # go mod download 不會重新執行，節省大量時間。
@@ -45,4 +46,15 @@ RUN go mod download
 # │  └── handlers/  ⏳ (後續才複製)                         │
 # └─────────────────────────────────────────────────────────┘
 
-# 接續執行後續指令
+## 第二次 COPY → 放入程式碼，避免影響依賴快取。
+# 這一步才把整個專案（包含 .go 檔案）複製進容器。
+# 如果一開始就把所有檔案複製進去，Docker build cache 就會失效，導致每次都要重新跑 go mod download。
+COPY . . 
+
+# 在容器的 /app 目錄下，把 main.go 編譯成一個可執行檔，檔名叫 main。 (這個步驟會在映像建構時執行，產生可執行檔放在容器檔案系統裡)
+RUN go build -o main main.go
+
+EXPOSE 8080
+
+# docker run 這個映像時，Docker 會執行 ./main，也就是剛剛編譯好的 Go 程式。
+CMD ["./main"]
